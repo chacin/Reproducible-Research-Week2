@@ -1,0 +1,125 @@
+---
+title: "Reproducible Research - Week 2 Assignment"
+author: "Juan"
+date: "August 16, 2016"
+output: html_document
+---
+
+This R Markdown document is the submission for the week 2 assignment of the Coursera *Reproducible Research" class. 
+
+**Note: All figures are embedded in the resulting html document**
+
+### Section 1 - Data input 
+
+The following section of code clears the memory, loads the desired libraries and reads in the data file *active.csv* and stores it in the data frame **Data_Raw.**
+
+```{r Read Data}
+options(warn = -1)      # Suppress warnings
+rm(list=ls()) # Clear memory
+library(ggplot2, quietly = TRUE)
+Data_Raw <- read.csv("activity.csv", sep = ",", header = TRUE)  # Read data file
+```
+
+### Section 2 - Histogram of total steps 
+
+The following section creates the first histogram plot. The code performs the frequencyt calculation using the *aggregate* function:
+
+```{r First Plot}
+steps <- aggregate(Data_Raw$steps,by=list(Data_Raw$date),sum)
+b <- seq(0,25000,by=2500)
+hist(steps[,2],xlab="Steps",main="Histogram of Daily Steps",breaks=b,col="green")
+```
+
+### Section 3 - Mean and median number of steps by day
+
+The following section calculates both the mean and median number of steps for each day in the data. As in section 2, the aggregate function is used to break the data up according to the date variable. Because that function converts the date data to factor, a call to *as.Date* is needed to convert the data back to date format.
+
+A final call to the *head* function is used to print just the first few lines of data.
+
+```{r Mean and median calculation}
+ave_steps <- aggregate(Data_Raw$steps,by=list(Data_Raw$date),mean)  # Compute average steps by day
+med_steps <- aggregate(Data_Raw$steps,by=list(Data_Raw$date),median) # Compute median steps by day
+names(ave_steps) <- c("Date","Mean")    # Assign column names to both data frames
+names(med_steps) <- c("Date","Median")
+combined <- merge(ave_steps,med_steps, by.x = "Date", by.y = "Date")   # Merge the two data frames 
+combined$Date <- as.Date(combined$Date, "%m/%d/%Y")   # Comvert first column to "date" format
+new_combined <- combined[order(combined$Date),] # Sort by date
+head(new_combined)
+```
+
+### Section 4 - Time series plot of mean number of steps per day
+
+The previous section already prepared the data into the right format in the *new_combined* data frame so creating a plot is just a simple call to *ggplot*.
+
+**Note: warnings for missing points are not suppressed**
+
+```{r Time series plot of mean number of daily steps}
+chart <- ggplot(data = new_combined, aes(x = Date, y = Mean)) + geom_line() + geom_point()+ labs(x = "Date", y = "Average Daily Steps")  
+print(chart)
+```
+
+### Section 4 - Five-minute time interval with the highest average steps
+
+Once more, the *aggregate* function is used but this time with the variable *interval* as the groupng variable. For this particular calculation, all **NA's** are removed. 
+
+The plot is useful to see the general pattern. The specific interval with the highest average step count is found with the call to the function *which.max*. The result is printed out to the screen.
+
+```{r Average step count as a function of 5-minute time interval}
+steps_int <- aggregate(Data_Raw$steps,by=list(Data_Raw$interval),mean,na.rm=TRUE)  # Compute averages
+imax <- which.max(steps_int$x)  # Index of interval with highest average step count
+chart <- ggplot(data = steps_int, aes(x = Group.1, y = x)) + geom_line() + geom_point()+ labs(x = "Time Interval #", y = "Average Steps")  
+print(chart)        # Create chart
+```
+```{r Print the result, echo = FALSE}
+cat("The 5-minute interval with highest number of steps is: ",steps_int[imax,1])   # Print results
+```
+### Section 5 - Replace missing values in the data
+
+This section finds all the missing values in the data and replaces them with the average step count for the specific time interval where the data is missing. That data is already stored in the variable **steps_int**. The steps followed are:
+
+* Find the index of all missing values using the functions *which* and *is.na*
+* Loop over those indices and replace them with the average for that specific time interval
+
+The new variable with the cleaned up data is **Data_clean**.
+
+```{r Replace missing data}
+Data_clean <- Data_Raw      # Make copy of original data
+ina <- which(is.na(Data_Raw$steps)) # Index of missing data
+for (i in ina){     # Loop and replace all NA's with average steps for that interval
+    Data_clean[i,1] <- steps_int[steps_int$Group.1 == Data_clean[i,3],2]
+}
+```
+
+### Section 6 - Re-create histograms of daily step count with new data
+
+This section recreates the histrogram from section 1 with the daily totals for step counts but using the new dataset with NA's removed. For the puposes of comparison, the before and after histograms are presented side by side.
+
+```{r New histogram}
+steps_clean <- aggregate(Data_clean$steps,by=list(Data_clean$date),sum)   # New steps totals by day
+# Plot the histogram side by side for comparison with the original data
+par(mfrow = c(1,2))
+hist(steps[,2],xlab="Steps",main="Original Data",breaks=b,col="green", ylim = c(0,25))
+hist(steps_clean[,2], xlab="Steps",main="NA's Removed",breaks=b,col="blue", ylim = c(0,25))
+```
+
+### Section 7 - Comparison of steps taken on weekdays versus weekends
+
+This section creates a panel plot to compare the steps taken, as a function of time, between weekdays and weekends. The data used is the one with the NA's removed. The procedure is:
+
+* Create a varibale that classifies all the dates as either weekdays or weekends. The main workhorse for this is the function *weekdays()*
+* Use that variable to subset the data for weekdays and weekends
+* Use the *aggregate* function again to calculate mean step counts for each time interval
+* Plot the results side by side for comparison
+
+```{r Step counts weekdays vs. weekends}
+fact <- ifelse(weekdays(as.Date(Data_clean$date,"%m/%d/%Y")) %in% c("Saturday","Sunday"), "Weekend", "Weekday")
+Data_wkd <- Data_clean[fact == "Weekday",]  # Data subset for weekdays
+Data_wke <- Data_clean[fact == "Weekend",]  # Data subset for weekends
+steps_wkd <- aggregate(Data_wkd$steps,by=list(Data_wkd$interval),mean)   # New steps totals for week days
+steps_wke <- aggregate(Data_wke$steps,by=list(Data_wke$interval),mean)  # New steps totals for week ends
+par(mfrow = c(1,2))
+plot(steps_wkd,xlab="Time Interval",ylab="Average Steps",main="Data on Weekdays", ylim = c(0,250))
+lines(steps_wkd)
+plot(steps_wke,xlab="Time Interval",ylab="Average Steps",main="Data on Weekends", ylim = c(0,250))
+lines(steps_wke)
+```
